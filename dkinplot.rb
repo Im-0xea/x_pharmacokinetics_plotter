@@ -8,6 +8,7 @@ options = {
   verbose: false,
   output: nil,
   csv: nil,
+  jour: nil,
   start: nil,
   stop: nil,
   resolution: "480x320",
@@ -28,6 +29,10 @@ parser = OptionParser.new do |opts|
 
   opts.on("-l CSV", "--csv FILE", "Plot logs from FILE") do |csv|
     options[:csv] = csv
+  end
+
+  opts.on("-j JOURNAL", "--journal JOURNAL", "Plot logs from JOURNAL") do |j|
+    options[:jour] = j
   end
 
   opts.on("-s START", "--start START", String, "Begin plot at START") do |s|
@@ -58,8 +63,33 @@ end
 
 parser.parse!
 
-if options[:csv] == nil || options[:output] == nil
-  puts opts
+logs = nil
+
+if options[:csv] != nil and options[:csv] != ""
+  logs = CSV.read(options[:csv], headers: true)
+elsif options[:jour] != nil and options[:jour] != ""
+  jdata = JSON.parse(File.read(options[:jour]))
+  logs = CSV.generate(headers: true) do |csv|
+    csv << ["timestamp","user","med","amount","ROA","comment"]
+    jdata["experiences"].each do |experience|
+      experience["ingestions"].each do |ingestion|
+        csv << [
+          Time.at(ingestion["time"] / 1000).utc.strftime("%Y-%m-%dT%H:%M:%S.%3N") + "Z",
+          "user",
+          ingestion["substanceName"],
+          "#{ingestion["dose"]}#{ingestion["units"]}",
+          ingestion["administrationRoute"],
+          ""
+        ]
+      end
+    end
+    options[:csv] = options[:jour] if logs != nil
+  end
+else
+  exit 1
+end
+if logs == nil || options[:output] == nil
+  #puts opts
   exit 1
 end
 
@@ -69,31 +99,28 @@ end
 #  exit 1
 #end
 
-logs = CSV.read(options[:csv], headers: true)
-return 1 if logs == nil
-
 #min_timestamp = Time.parse(ARGV[1])
 min_timestamp = Time.parse(options[:start])
-return 1 if min_timestamp == nil
+exit 1 if min_timestamp == nil
 #max_timestamp = Time.parse(ARGV[2])
 max_timestamp = Time.parse(options[:stop])
-return 1 if max_timestamp == nil
+exit 1 if max_timestamp == nil
 
 #width, height = ARGV[4].split("x").map(&:to_i)
 width, height = options[:resolution].split("x").map(&:to_i)
 #samples = ARGV[3]
 samples = (width > 66 ?  width.to_i - 66 : 0)
-return 1 if width <= 0 || height <= 0 || samples <= 0
+exit 1 if width <= 0 || height <= 0 || samples <= 0
 
 #sub_l = 3
 
 dat = []
 dat_i = 0
 last_med = nil
-logs.sort_by { |dose| dose['med'] }.each do |dose|
-  timestamp = Time.parse(dose['timestamp'])
+CSV.parse(logs, headers: true).sort_by { |log| log['med'] }.each do |log|
+  timestamp = Time.parse(log['timestamp'])
   if timestamp >= min_timestamp && timestamp <= max_timestamp
-    if dose['med'] != last_med || last_med == nil
+    if log['med'] != last_med || last_med == nil
 #      if sub_l == 0
 #        break
 #      end
@@ -102,15 +129,15 @@ logs.sort_by { |dose| dose['med'] }.each do |dose|
         dat_i += 1
       end
       dat << {
-        "Substance" => dose['med'], "Ingestions" => [],
+        "Substance" => log['med'], "Ingestions" => [],
         "ActivityX" => (0..samples-1).map { |i| (min_timestamp + ((max_timestamp - min_timestamp) / samples) * i).strftime("%Y-%m-%dT%H:%M:%S") },
         "ActivityY" => [],
         "BioavailOral" => 0.75,
         "BioavailIV" => 1.0
       }
-      last_med = dose['med']
+      last_med = log['med']
     end
-    dat[dat_i]["Ingestions"] << { "Timestamp" => timestamp, "Amount" => dose['amount'].match(/(\d+)/)[0].to_f, "Route" => dose['route'] }
+    dat[dat_i]["Ingestions"] << { "Timestamp" => timestamp, "Amount" => log['amount'].match(/(\d+)/)[0].to_f, "Route" => log['route'] }
   end
 end
 
@@ -191,4 +218,3 @@ puts "plotting: #{options[:csv]}"
 puts JSON.pretty_generate(dat) if options[:verbose]
 
 exit 0
-
