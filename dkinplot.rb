@@ -8,6 +8,7 @@ require "mkmf"
 options = {
   verbose: false,
   sixel: false,
+
   output: nil,
   csv: nil,
   jour: nil,
@@ -18,6 +19,13 @@ options = {
   blood_volume: 5.0,
 
   resolution: "720x480",
+
+  theme: "dark",
+
+  #text_color: "black",
+  text_color: "white",
+  background_color: "#101418",
+  #background_color: nil,
 
   #main_font: "terminus,12",
   #legend_font: "terminus,8"
@@ -64,6 +72,26 @@ parser = OptionParser.new do |opts|
     options[:resolution] = r
   end
 
+  opts.on("--light", "Show the plot in light theme") do
+    options[:theme] = "light"
+    options[:text_color] = "black"
+    options[:background_color] = nil
+  end
+
+  opts.on("--dark", "Show the plot in dark theme") do
+    options[:theme] = "dark"
+    options[:text_color] = "white"
+    options[:background_color] = "#101418"
+  end
+
+  opts.on("--text-color COLOR", String, "Show the text in COLOR") do |tc|
+    options[:text_color] = tc
+  end
+
+  opts.on("-bg COLOR", "--background-color COLOR", String, "Show the background in COLOR") do |bg|
+    options[:background_color] = bg
+  end
+
   opts.on("-mf FONT", "--main-font FONT", String, "Write plot with FONT") do |mf|
     options[:main_font] = mf
   end
@@ -81,9 +109,12 @@ end
 parser.parse!
 
 logs = nil
+csv_data = nil
 
 if options[:csv] != nil and options[:csv] != ""
   logs = CSV.read(options[:csv], headers: true)
+  csv_data = logs
+  #logs = File.read(options[:csv])
 elsif options[:jour] != nil and options[:jour] != ""
   jdata = JSON.parse(File.read(options[:jour]))
   logs = CSV.generate(headers: true) do |csv|
@@ -100,48 +131,44 @@ elsif options[:jour] != nil and options[:jour] != ""
         ]
       end
     end
-    options[:csv] = options[:jour] if logs != nil
   end
+  csv_data = CSV.parse(logs, headers: true)
 else
   exit 1
 end
-if logs == nil || options[:output] == nil
+if csv_data == nil || options[:output] == nil
   #puts opts
   exit 1
 end
 
-#input = ARGV[0]
-#
-#if ARGV.length != 5
-#  exit 1
-#end
+min_timestamp = nil
+min_timestamp = Time.parse(options[:start]) if options[:start] != nil
 
-#min_timestamp = Time.parse(ARGV[1])
-min_timestamp = Time.parse(options[:start])
-exit 1 if min_timestamp == nil
-#max_timestamp = Time.parse(ARGV[2])
-max_timestamp = Time.parse(options[:stop])
-exit 1 if max_timestamp == nil
+max_timestamp = nil
+max_timestamp = Time.parse(options[:stop]) if options[:stop] != nil
 
-#width, height = ARGV[4].split("x").map(&:to_i)
+
+if min_timestamp == nil || max_timestamp == nil
+  min_timestamp = Time.parse(csv_data.first['timestamp']) if min_timestamp == nil
+  max_timestamp = Time.now() if max_timestamp == nil
+
+  exit 1 if min_timestamp == nil || max_timestamp == nil
+
+  puts min_timestamp
+  puts max_timestamp
+end
+
 width, height = options[:resolution].split("x").map(&:to_i)
-#samples = ARGV[3]
 samples = (width > 66 ?  width.to_i - 66 : 0)
 exit 1 if width <= 0 || height <= 0 || samples <= 0
-
-#sub_l = 3
 
 dat = []
 dat_i = 0
 last_med = nil
-CSV.parse(logs, headers: true).sort_by { |log| log['med'] }.each do |log|
+csv_data.sort_by { |log| log['med'] }.each do |log|
   timestamp = Time.parse(log['timestamp'])
   if timestamp >= min_timestamp && timestamp <= max_timestamp
     if log['med'] != last_med || last_med == nil
-#      if sub_l == 0
-#        break
-#      end
-#      sub_l -= 1
       if last_med != nil
         dat_i += 1
       end
@@ -165,10 +192,11 @@ Gnuplot.open do |gp|
     plot.margin "10, 1, 3.75, 0.5"
     #plot.unset "ytics"
     plot.style "data lines"
-    plot.set 'object 1 rectangle from screen 0,0 to screen 1,1 fillcolor rgb"#101418" behind'
+    plot.set "object 1 rectangle from screen 0,0 to screen 1,1#{options[:background_color] != nil ? " fillcolor rgb\"#{options[:background_color]}\" behind" : ""}"
     plot.set 'style fill transparent solid 0.65'
     plot.set 'style data filledcurves above'
-    plot.grid 'front lw 1 dashtype 2 lc rgb "white"'
+    #plot.grid 'front lw 1 dashtype 2 lc rgb "white"'
+    plot.grid "front lw 1 dashtype 2 lc rgb \"#{options[:text_color]}\""
     plot.key "spacing 1 width 0.5 maxrows 15 maxcols 5 samplen 1 font \"#{options[:legend_font]}\" inside nobox"
     #plot.key "box spacing 1.5 width 1 opaque"
 
@@ -182,13 +210,13 @@ Gnuplot.open do |gp|
     plot.yrange "[0.0:*]"
     plot.set "autoscale ymax"
     plot.samples "#{samples}"
-    plot.set 'border lw 2 lc rgb "white"'
-    plot.set 'xtics textcolor rgb "white"'
-    plot.set 'ytics textcolor rgb "white"'
-    plot.set 'xlabel "X" textcolor rgb "white"'
-    plot.set 'ylabel "Y" textcolor rgb "white"'
-    plot.set 'key textcolor rgb "white"'
-    plot.style 'line 1 linecolor "white"'
+    plot.set "border lw 2 lc rgb \"#{options[:text_color]}\""
+    plot.set "xtics textcolor rgb \"#{options[:text_color]}\""
+    plot.set "ytics textcolor rgb \"#{options[:text_color]}\""
+    plot.set "xlabel \"X\" textcolor rgb \"#{options[:text_color]}\""
+    plot.set "ylabel \"Y\" textcolor rgb \"#{options[:text_color]}\""
+    plot.set "key textcolor rgb \"#{options[:text_color]}\""
+    plot.style "line 1 linecolor \"#{options[:text_color]}\""
     
     plot.title  ""
     plot.unset "xlabel"
