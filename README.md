@@ -19,6 +19,6 @@ ruby dkinplot.rb -l example.csv -o plot.png -s "2024-01-01T00:00" -t "2024-06-01
 #### Journal logs
 
 ```shell
-ruby dkinplot.rb -j example.csv -o plot.png -s "2024-01-01T00:00" -t "2024-06-01T00:00" -r "1366x755"
+ruby dkinplot.rb -j example_journal.json -o plot.png -s "2024-01-01T00:00" -t "2024-06-01T00:00" -r "1366x755"
 ruby 
 ```

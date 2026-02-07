@@ -3,17 +3,26 @@ require 'json'
 require 'time'
 require "gnuplot"
 require "optparse"
+require "mkmf"
 
 options = {
   verbose: false,
+  sixel: false,
   output: nil,
   csv: nil,
   jour: nil,
+
   start: nil,
   stop: nil,
-  resolution: "480x320",
-  main_font: "terminus,12",
-  legend_font: "terminus,8"
+
+  blood_volume: 5.0,
+
+  resolution: "720x480",
+
+  #main_font: "terminus,12",
+  #legend_font: "terminus,8"
+  main_font: "monospace,8",
+  legend_font: "monospace,7"
 }
 
 parser = OptionParser.new do |opts|
@@ -21,6 +30,9 @@ parser = OptionParser.new do |opts|
 
   opts.on("-v", "--verbose", "Enable noisy output") do
     options[:verbose] = true
+  end
+  opts.on("-i", "--sixel", "Enable sixel output(requires '\"img2sixel\" bin)") do
+    options[:sixel] = true
   end
 
   opts.on("-o OUTPUT", "--output OUTPUT", "Write to OUTPUT") do |out|
@@ -41,6 +53,11 @@ parser = OptionParser.new do |opts|
 
   opts.on("-t STOP", "--stop STOP", String, "End plot at STOP") do |t|
     options[:stop] = t
+  end
+
+  opts.on("-bv LITERS", "--blood-volume LITERS", Float, "Blood-volume(in L) to base concentrations on") do |bv|
+    options[:blood_volume] = bv
+    options[:blood_volume] = 0.0 if options[:blood_volume] == nil
   end
 
   opts.on("-r RESOLUTION", "--resolution RESOLUTION", String, "Output plot in RESOLUTION") do |r|
@@ -145,7 +162,7 @@ Gnuplot.open do |gp|
   Gnuplot::Plot.new( gp ) do |plot|
     plot.set "term pngcairo enhanced color size #{width},#{height} font \"#{options[:main_font]}\""
     plot.set "output \"#{options[:output]}\""
-    plot.margin "10, 1, 3, 1"
+    plot.margin "10, 1, 3.75, 0.5"
     #plot.unset "ytics"
     plot.style "data lines"
     plot.set 'object 1 rectangle from screen 0,0 to screen 1,1 fillcolor rgb"#101418" behind'
@@ -190,7 +207,7 @@ Gnuplot.open do |gp|
         conc = 0.0
         for ing in sub['Ingestions']
           bioavail = ((ing['Route'] != nil && ing['Route'] == "intravenous") ? 1.0 : 0.5)
-          vd = 5.0
+          vd = 0.0 + options[:blood_volume].to_f
           ka = (0.009 * 60)
           k = ((ing['Route'] != nil && ing['Route'] == "intravenous") ? (49.0 / vd) : 0.07)
           cl = ((ing['Route'] != nil && ing['Route'] == "intravenous") ? 20.0 : k * vd)
@@ -213,8 +230,10 @@ Gnuplot.open do |gp|
   end
 end
 
-puts "plotting: #{options[:csv]}"
+puts "plotting: #{options[:csv] != nil ? options[:csv] : options[:jour] != nil ? options[:jour] : "none"}"
 
 puts JSON.pretty_generate(dat) if options[:verbose]
+
+system("img2sixel #{options[:output]}") if options[:sixel] == true && File.exist?(options[:output]) && find_executable("img2sixel")
 
 exit 0
